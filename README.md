@@ -1,6 +1,6 @@
 # Savings App - Spending Tracker
 
-A minimalistic React web application for tracking your spending with categories, amounts, and notes.
+A minimalistic React web application for tracking your spending with categories, amounts, and notes. Changing to trigger a build, hopefully.
 
 [![CI](https://github.com/luisejroblesci/savings-app/actions/workflows/ci.yml/badge.svg)](https://github.com/luisejroblesci/savings-app/actions/workflows/ci.yml)
 
