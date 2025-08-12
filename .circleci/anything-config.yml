@@ -1,0 +1,70 @@
+version: 2.1
+
+orbs:
+  github-cli: circleci/github-cli@2.4.0
+
+# Pipeline parameters to control pr.sh behavior
+parameters:
+  author:
+    type: string
+    default: "circleci-app[bot]"
+  state:
+    type: string
+    default: "open"
+  limit:
+    type: integer
+    default: 10
+  skip_comment_reactions:
+    type: boolean
+    default: false
+
+jobs:
+  run-pr-script:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - github-cli/install
+      - run:
+          name: Ensure jq is installed
+          command: |
+            set -euxo pipefail
+            if ! command -v jq >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y jq
+            fi
+      - run:
+          name: Authenticate gh (optional)
+          command: |
+            set -euo pipefail
+            if ! gh auth status >/dev/null 2>&1; then
+              if [ -n "${GH_TOKEN:-}" ]; then
+                echo "$GH_TOKEN" | gh auth login --with-token
+              elif [ -n "${GITHUB_TOKEN:-}" ]; then
+                echo "$GITHUB_TOKEN" | gh auth login --with-token
+              else
+                echo "Warning: GH_TOKEN or GITHUB_TOKEN is not set; API calls may be rate-limited." >&2
+              fi
+            fi
+      - run:
+          name: Run pr.sh
+          command: |
+            set -euxo pipefail
+            chmod +x ./pr.sh
+            mkdir -p artifacts
+            ./pr.sh \
+              --author="<< pipeline.parameters.author >>" \
+              --state="<< pipeline.parameters.state >>" \
+              --limit="<< pipeline.parameters.limit >>" \
+              --out="artifacts/prs.json" \
+              $( [ "<< pipeline.parameters.skip_comment_reactions >>" = "true" ] && echo "--skip-comment-reactions" )
+      - store_artifacts:
+          path: artifacts
+          destination: pr-data
+
+workflows:
+  run-pr-script:
+    jobs:
+      - run-pr-script
+
+
