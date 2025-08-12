@@ -111,6 +111,9 @@ aggregate_one_pr() {
   local pr_reactions
   pr_reactions=$(gh api -H "Accept: ${accept_header}" \
     "/repos/${owner}/${repo}/issues/${number}/reactions?per_page=100" --paginate | jq -s 'add // []')
+  local commits
+  commits=$(gh api -H "Accept: ${accept_header}" \
+    "/repos/${owner}/${repo}/pulls/${number}/commits?per_page=100" --paginate | jq -s 'add // []')
   # Optionally fetch reactions for each issue comment and each review comment
   local issue_comments_with_reactions review_comments_with_reactions
   if [ "${SKIP_COMMENT_REACTIONS}" = "true" ]; then
@@ -138,11 +141,13 @@ aggregate_one_pr() {
     --argjson reviewComments "${review_comments_with_reactions}" \
     --argjson reviews "${reviews}" \
     --argjson prReactions "${pr_reactions}" \
+    --argjson commits "${commits}" \
     '$meta + {
       issueComments: $issueComments,
       reviewComments: $reviewComments,
       reviews: $reviews,
-      prReactions: $prReactions
+      prReactions: $prReactions,
+      commits: $commits
     }'
 }
 OUTPUT_TMP=$(mktemp)
