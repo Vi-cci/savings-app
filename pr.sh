@@ -84,7 +84,7 @@ if [ -n "${PR_URL}" ]; then
   echo "Fetching single PR: ${OWNER}/${REPO}#${NUMBER}" >&2
   
   # Fetch the single PR details
-  PR_JSON=$(gh api "/repos/${OWNER}/${REPO}/pulls/${NUMBER}" --json number,html_url,title,user,created_at,updated_at,draft,labels,state 2>/dev/null)
+  PR_JSON=$(gh api "/repos/${OWNER}/${REPO}/pulls/${NUMBER}" 2>/dev/null)
   
   # Transform to match the expected format
   PR_STREAM=$(echo "${PR_JSON}" | jq -c '{
