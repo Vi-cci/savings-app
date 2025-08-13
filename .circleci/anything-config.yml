@@ -17,6 +17,9 @@ parameters:
   skip_comment_reactions:
     type: boolean
     default: false
+  pr_url:
+    type: string
+    default: ""
 
 jobs:
   run-pr-script:
@@ -53,9 +56,7 @@ jobs:
             chmod +x ./pr.sh
             mkdir -p artifacts
             ./pr.sh \
-              --author="<< pipeline.parameters.author >>" \
-              --state="<< pipeline.parameters.state >>" \
-              --limit="<< pipeline.parameters.limit >>" \
+              $( [ -n "<< pipeline.parameters.pr_url >>" ] && echo "--pr-url=\"<< pipeline.parameters.pr_url >>\"" || echo "--author=\"<< pipeline.parameters.author >>\" --state=\"<< pipeline.parameters.state >>\" --limit=\"<< pipeline.parameters.limit >>\"" ) \
               --out="artifacts/prs.json" \
               $( [ "<< pipeline.parameters.skip_comment_reactions >>" = "true" ] && echo "--skip-comment-reactions" )
       - store_artifacts:
