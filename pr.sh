@@ -18,11 +18,13 @@ set -euo pipefail
 #   scripts/gh-fetch-circleci-bot-prs.sh
 #   scripts/gh-fetch-circleci-bot-prs.sh --limit=50 --out=bot-prs.json
 #   scripts/gh-fetch-circleci-bot-prs.sh --author=foo --state=open --limit=200
+#   scripts/gh-fetch-circleci-bot-prs.sh --pr-url=https://github.com/owner/repo/pull/123
 AUTHOR="circleci-app[bot]"
 STATE="open"
 LIMIT="100"
 OUT=""
 SKIP_COMMENT_REACTIONS="false"
+PR_URL=""
 for arg in "$@"; do
   case "$arg" in
     --author=*)
@@ -45,8 +47,12 @@ for arg in "$@"; do
       SKIP_COMMENT_REACTIONS="true"
       shift
       ;;
+    --pr-url=*)
+      PR_URL="${arg#*=}"
+      shift
+      ;;
     --help|-h)
-      echo "Usage: $0 [--author=name] [--state=open|closed|merged] [--limit=N] [--out=path] [--skip-comment-reactions]" >&2
+      echo "Usage: $0 [--author=name] [--state=open|closed|merged] [--limit=N] [--out=path] [--skip-comment-reactions] [--pr-url=URL]" >&2
       exit 0
       ;;
     *)
@@ -63,30 +69,63 @@ if ! command -v jq >/dev/null 2>&1; then
   echo "Error: jq is required" >&2
   exit 1
 fi
-# Search PRs authored by AUTHOR, any repository, given state, limited by LIMIT
-# We derive owner/repo from the URL to support cross-repo results.
-echo "Searching PRs: author='${AUTHOR}', state='${STATE}', limit='${LIMIT}'" >&2
-PRS_JSON=$(gh search prs \
-  --author="${AUTHOR}" \
-  --state="${STATE}" \
-  --limit="${LIMIT}" \
-  --json number,url,title,author,createdAt,updatedAt,isDraft,labels,state 2>/dev/null)
-# Transform into a stream of minimal PR metadata with explicit owner and repo
-PR_STREAM=$(echo "${PRS_JSON}" | jq -c '
-  [.[] | {
+if [ -n "${PR_URL}" ]; then
+  # Extract owner, repo, and PR number from URL
+  # Expected format: https://github.com/owner/repo/pull/number
+  if [[ ! "${PR_URL}" =~ ^https://github\.com/([^/]+)/([^/]+)/pull/([0-9]+)$ ]]; then
+    echo "Error: PR URL must be in format https://github.com/owner/repo/pull/number" >&2
+    exit 1
+  fi
+  
+  OWNER="${BASH_REMATCH[1]}"
+  REPO="${BASH_REMATCH[2]}"
+  NUMBER="${BASH_REMATCH[3]}"
+  
+  echo "Fetching single PR: ${OWNER}/${REPO}#${NUMBER}" >&2
+  
+  # Fetch the single PR details
+  PR_JSON=$(gh api "/repos/${OWNER}/${REPO}/pulls/${NUMBER}" --json number,html_url,title,user,created_at,updated_at,draft,labels,state 2>/dev/null)
+  
+  # Transform to match the expected format
+  PR_STREAM=$(echo "${PR_JSON}" | jq -c '{
     number: .number,
-    url: .url,
-    owner: (.url | split("/")[3]),
-    repo: (.url | split("/")[4]),
+    url: .html_url,
+    owner: (.html_url | split("/")[3]),
+    repo: (.html_url | split("/")[4]),
     title: .title,
-    author: .author.login,
-    createdAt: .createdAt,
-    updatedAt: .updatedAt,
+    author: .user.login,
+    createdAt: .created_at,
+    updatedAt: .updated_at,
     state: .state,
-    isDraft: .isDraft,
+    isDraft: .draft,
     labels: ((.labels // []) | map(.name))
-  }] | .[]
-')
+  }')
+else
+  # Search PRs authored by AUTHOR, any repository, given state, limited by LIMIT
+  # We derive owner/repo from the URL to support cross-repo results.
+  echo "Searching PRs: author='${AUTHOR}', state='${STATE}', limit='${LIMIT}'" >&2
+  PRS_JSON=$(gh search prs \
+    --author="${AUTHOR}" \
+    --state="${STATE}" \
+    --limit="${LIMIT}" \
+    --json number,url,title,author,createdAt,updatedAt,isDraft,labels,state 2>/dev/null)
+  # Transform into a stream of minimal PR metadata with explicit owner and repo
+  PR_STREAM=$(echo "${PRS_JSON}" | jq -c '
+    [.[] | {
+      number: .number,
+      url: .url,
+      owner: (.url | split("/")[3]),
+      repo: (.url | split("/")[4]),
+      title: .title,
+      author: .author.login,
+      createdAt: .createdAt,
+      updatedAt: .updatedAt,
+      state: .state,
+      isDraft: .isDraft,
+      labels: ((.labels // []) | map(.name))
+    }] | .[]
+  ')
+fi
 accept_header="application/vnd.github+json, application/vnd.github.squirrel-girl-preview+json"
 aggregate_one_pr() {
   local pr_meta_json="$1"
